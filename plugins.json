@@ -10,6 +10,16 @@
       "author": "Retr0",
       "github": "https://github.com/AimesSoft/nipaplay-reload",
       "file": "plugins/danmaku_regex_filter/danmaku_regex_filter.js"
+    },
+    {
+      "id": "downloader_unlock",
+      "name": "下载器解锁",
+      "version": "1.0.0",
+      "minHostVersion": "1.10.5",
+      "description": "强制解锁下载器功能。",
+      "author": "Retr0",
+      "github": "",
+      "file": "plugins/downloader_unlock/downloader_unlock.js"
     }
   ]
 }
