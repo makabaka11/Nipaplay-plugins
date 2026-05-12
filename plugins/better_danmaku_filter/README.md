@@ -1,6 +1,8 @@
 # 智能弹幕精选（better_danmaku_filter）
 
-NipaPlay 弹幕过滤插件，通过多维度评分智能筛选优质弹幕，过滤低质量内容。
+NipaPlay 弹幕过滤插件，通过多维度评分算法智能筛选优质弹幕，过滤低质量内容。
+
+在线演示：[better_danmaku_filter](https://www.retr0.xyz/better_danmaku_filter.html)
 
 ## 功能
 
