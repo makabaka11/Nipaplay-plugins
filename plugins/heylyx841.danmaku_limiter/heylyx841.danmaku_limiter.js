@@ -1,9 +1,9 @@
 "use strict";
 
 const pluginManifest = {
-  id: 'danmaku_limiter',
+  id: 'heylyx841.danmaku_limiter',
   name: '弹幕数量控制器',
-  version: '1.0.2',
+  version: '1.0.3',
   minHostVersion: '1.10.5',
   description: '自定义每秒弹幕上限，超出后自动去重稀释',
   author: 'Heylyx841',
@@ -72,7 +72,8 @@ function pluginOnEvent(e) {
   var list = e.data && e.data.danmaku;
   if (!Array.isArray(list) || list.length === 0) return;
 
-  var buckets = {};
+  // 使用稀疏数组替代 Object
+  var buckets = []; 
   var minSec = Infinity;
   var maxSec = -Infinity;
   
@@ -123,9 +124,10 @@ function pluginOnEvent(e) {
     }
   }
 
-  danmaku.replace({ count: out.length, comments: out });
-  
+  // 只有在发生实际拦截/过滤时，才触发宿主的 IPC 通信
   if (out.length !== list.length) {
+    // 保证传入参数格式符合 { count, comments } 规范要求
+    danmaku.replace({ count: out.length, comments: out });
     ui.showSnackBar('弹幕: ' + list.length + ' → ' + out.length);
   }
 }
