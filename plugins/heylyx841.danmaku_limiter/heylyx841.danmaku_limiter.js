@@ -15,11 +15,11 @@ var limitEnabled = true;
 var mergeEnabled = false;
 var bigCompat = false;
 var maxPerSec = 5;
-var MERGE_WINDOW = 30;
-var MERGE_THRESHOLD = 0.75;
+var mergeWindow = 30;
+var mergeThreshold = 0.75;
 var crossMode = false;
 
-var subDigits = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉'];
+var SUB_DIGITS = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉'];
 
 // 全角→半角映射
 var WIDTH_TABLE = {
@@ -50,7 +50,7 @@ function toGroupLabel(n) {
   var s = '';
   var num = n;
   while (num > 0) {
-    s = subDigits[num % 10] + s;
+    s = SUB_DIGITS[num % 10] + s;
     num = Math.floor(num / 10);
   }
   return '₍' + s + '₎';
@@ -92,12 +92,12 @@ function refreshConfig() {
   var mw = settings.getText('mergeWindow');
   if (mw) {
     var pw = parseFloat(mw);
-    if (!isNaN(pw) && pw > 0) MERGE_WINDOW = pw;
+    if (!isNaN(pw) && pw > 0) mergeWindow = pw;
   }
   var mt = settings.getText('mergeThreshold');
   if (mt) {
     var pt = parseFloat(mt);
-    if (!isNaN(pt) && pt >= 0.5 && pt <= 1.0) MERGE_THRESHOLD = pt;
+    if (!isNaN(pt) && pt >= 0.5 && pt <= 1.0) mergeThreshold = pt;
   }
 }
 
@@ -209,7 +209,7 @@ function pluginOnEvent(e) {
         if (consumed[j]) continue;
         var dj = src[j];
         if (!dj || typeof dj.time !== 'number' || isNaN(dj.time)) continue;
-        if (dj.time - d.time > MERGE_WINDOW) break;
+        if (dj.time - d.time > mergeWindow) break;
         // 跨类型检查
         if (!crossMode && dj.type !== d.type) continue;
         // 完全相同直接合并，跳过相似度计算
@@ -219,7 +219,7 @@ function pluginOnEvent(e) {
           consumed[j] = true;
           continue;
         }
-        if (similarity(norms[i], norms[j]) >= MERGE_THRESHOLD) {
+        if (similarity(norms[i], norms[j]) >= mergeThreshold) {
           group.push(dj);
           groupNorms.push(norms[j]);
           consumed[j] = true;
@@ -347,18 +347,18 @@ function pluginHandleUIAction(id) {
   if (id === 'mergeWindow') {
     var mw = settings.getText('mergeWindow');
     var pw = parseFloat(mw);
-    if (!isNaN(pw) && pw > 0) MERGE_WINDOW = pw;
-    settings.setText('mergeWindow', String(MERGE_WINDOW));
+    if (!isNaN(pw) && pw > 0) mergeWindow = pw;
+    settings.setText('mergeWindow', String(mergeWindow));
     pluginUIEntries = makeUI();
-    return { type: 'text', title: '已保存', content: '合并窗口 ' + MERGE_WINDOW + ' 秒' };
+    return { type: 'text', title: '已保存', content: '合并窗口 ' + mergeWindow + ' 秒' };
   }
   if (id === 'mergeThreshold') {
     var mt = settings.getText('mergeThreshold');
     var pt = parseFloat(mt);
-    if (!isNaN(pt) && pt >= 0.5 && pt <= 1.0) MERGE_THRESHOLD = pt;
-    settings.setText('mergeThreshold', String(MERGE_THRESHOLD));
+    if (!isNaN(pt) && pt >= 0.5 && pt <= 1.0) mergeThreshold = pt;
+    settings.setText('mergeThreshold', String(mergeThreshold));
     pluginUIEntries = makeUI();
-    return { type: 'text', title: '已保存', content: '相似度阈值 ' + MERGE_THRESHOLD };
+    return { type: 'text', title: '已保存', content: '相似度阈值 ' + mergeThreshold };
   }
   return null;
 }
