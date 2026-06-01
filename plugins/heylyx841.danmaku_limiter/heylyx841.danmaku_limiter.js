@@ -86,9 +86,65 @@ function typeToMode(type) {
   return 0;
 }
 
+// 使用原生相似度引擎做模糊去重（仅保留代表，不合并不标注）
+// 达到 maxPerSec 后提前终止，避免过度去重
+function nativeDedup(bucket, limit) {
+  // 桶内数量已不超限，无需去重
+  if (bucket.length <= limit) return bucket.slice();
+
+  if (!danmaku.similarityAvailable || !danmaku.similarityAvailable()) {
+    dev.log('原生相似度引擎不可用，跳过去重');
+    return bucket.slice();
+  }
+
+  var items = [];
+  for (var j = 0; j < bucket.length; j++) {
+    items.push({
+      text: bucket[j].content || '',
+      mode: typeToMode(bucket[j].type),
+      time_seconds: bucket[j].time
+    });
+  }
+
+  var config = {
+    max_dist: 5,
+    max_cosine: Math.round(mergeThreshold * 100),
+    use_pinyin: true,
+    cross_mode: crossMode,
+    time_window: 1
+  };
+
+  var result = danmaku.checkSimilarity(items, config);
+  if (!result || !result.groups || result.groups.length === 0) return bucket.slice();
+
+  // 按组大小降序排列，优先去除大组（每组合并更多重复）
+  var groups = result.groups.filter(function(g) { return g && g.length >= 2; });
+  groups.sort(function(a, b) { return b.length - a.length; });
+
+  var consumed = {};
+  var removed = 0;
+  var needRemove = bucket.length - limit; // 需要移除的最小数量
+
+  for (var g = 0; g < groups.length; g++) {
+    var group = groups[g];
+    // 已移除足够多，停止去重
+    if (removed >= needRemove) break;
+    // 仅保留代表 group[0]，其余标记为已消费
+    for (var k = 1; k < group.length; k++) {
+      consumed[group[k]] = true;
+      removed++;
+    }
+  }
+
+  var deduped = [];
+  for (var j = 0; j < bucket.length; j++) {
+    if (!consumed[j]) deduped.push(bucket[j]);
+  }
+  return deduped;
+}
+
 // 使用原生相似度引擎做批量查重 + 合并
 function nativeMerge(list) {
-  // 先检查原生引擎是否可用
   if (!danmaku.similarityAvailable || !danmaku.similarityAvailable()) {
     dev.log('原生相似度引擎不可用，跳过合并');
     return list;
@@ -227,14 +283,17 @@ function pluginOnEvent(e) {
       for (var k = 0; k < sortedKeys.length; k++) {
         var bucket = buckets[sortedKeys[k]];
 
-        // 阶段1：内容去重（同1秒内相同内容只保留一条）
-        var seen = Object.create(null);
-        var deduped = [];
-        for (var j = 0; j < bucket.length; j++) {
-          var c = bucket[j].content || '';
-          if (seen[c]) continue;
-          seen[c] = true;
-          deduped.push(bucket[j]);
+        // 阶段1：模糊去重（合并已开启时跳过，因合并阶段已完成相似去重）
+        var deduped;
+        if (mergeEnabled) {
+          deduped = bucket;
+        } else {
+          try {
+            deduped = nativeDedup(bucket, maxPerSec);
+          } catch (ex) {
+            dev.log('模糊去重异常，回退不去重: ' + ex);
+            deduped = bucket;
+          }
         }
 
         // 阶段2：均匀pop（去重后仍超限则均匀采样）

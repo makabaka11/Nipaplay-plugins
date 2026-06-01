@@ -9,7 +9,7 @@
 
 本插件监听 `danmakuLoaded` 事件，在弹幕正式渲染前进行高效拦截与实时优化：
 
-- **密度限制**（独立开关，默认开启）：按1秒时间分桶，两阶段限流——先对同桶内相同内容去重（重复弹幕仅保留一条），去重后仍超 `maxPerSec`（默认5条/秒）时均匀采样（等间距取），避免只保留最前面的弹幕。关闭后不执行限流和去重。
+- **密度限制**（独立开关，默认开启）：按1秒时间分桶，两阶段限流——先对同桶内相似弹幕模糊去重（调用原生相似度引擎，与合并阶段一致；若合并已开启则跳过去重），去重后仍超 `maxPerSec`（默认5条/秒）时均匀采样（等间距取），避免只保留最前面的弹幕。关闭后不执行限流和去重。
 - **相似合并**（独立开关）：使用 NipaPlay 原生相似度引擎（C++ 实现，四级检测：完全相同 → 编辑距离 → 拼音距离 → 余弦相似度），在时间窗口内匹配相似弹幕，合并为单条并标注合并数，替代原生合并渲染。
 - **跨类型合并**（独立开关，默认开启）：控制是否将不同类型（滚动/顶部/底部）的弹幕合并在一起，关闭后仅合并同类型弹幕。
 - **小字兼容**：部分设备无法显示 Unicode 下标 ₍ɴ₎，开启后改用 (N) 标注合并数。
@@ -54,7 +54,15 @@ flowchart TD
     SplitTimed --> SortTimed["timed 按时间排序"]
     SortTimed --> Bucket["按 floor(time) 分桶 (1秒)"]
     Bucket --> ForEachBucket["遍历每个桶"]
-    ForEachBucket --> Dedup["阶段1: 内容去重 (相同 content 仅保留一条)"]
+    ForEachBucket --> MergeCheck{"合并已开启?"}
+    MergeCheck -->|是| SkipDedup["跳过去重<br/>(合并阶段已完成)"]
+    MergeCheck -->|否| NeedDedup{"桶内数量 > maxPerSec?"}
+    NeedDedup -->|否| SkipDedup
+    NeedDedup -->|是| EngineCheck{"引擎可用?<br/>similarityAvailable"}
+    EngineCheck -->|否| SkipDedup2["跳过去重<br/>(返回原桶)"]
+    EngineCheck -->|是| Dedup["阶段1: 模糊去重<br/>(原生相似度引擎<br/>达limit后提前终止)"]
+    SkipDedup --> OverLimit
+    SkipDedup2 --> OverLimit
     Dedup --> OverLimit{"去重后数量 <= maxPerSec?"}
     OverLimit -->|是| AcceptAll[全部接纳]
     OverLimit -->|否| UniformPop["阶段2: 均匀采样 (等间距取 maxPerSec 条)"]
@@ -77,7 +85,7 @@ flowchart TD
 ### 1.1.2 更新
 
 - **默认值修改**：`max_dist` 由 3 调整为 5、`mergeThreshold` 由 0.75 调整为 0.45、`crossMode` 默认由关闭改为开启；相似度阈值输入范围由 0.5~1.0 放宽为 0.0~1.0，允许更宽松的合并策略。
-- **限流算法回退**：由滑动窗口回退为1秒分桶 + 两阶段限流（先内容去重，再均匀采样），修复只开启限流时滚动弹幕完全不加载的 bug。
+- **限流算法回退**：由滑动窗口回退为1秒分桶 + 两阶段限流（先模糊去重再均匀采样）；去重改用原生相似度引擎，与合并阶段一致；合并开启时跳过去重避免重复计算，修复只开启限流时滚动弹幕完全不加载的 bug。
 - **修复开关重启丢失**：switch handler 改为从 Dart 持久化层读取新值，避免 JS 与 Dart 值脱同步导致翻转方向错误；移除 `saveSwitchConfig()` 消除双写覆盖。
 - **引擎可用性检查**：合并前先调用 `danmaku.similarityAvailable()` 检查原生引擎状态，不可用时跳过合并而非静默失败。
 - **原生相似度引擎**：合并弹幕改用 NipaPlay 内置的 `danmaku.checkSimilarity()` 原生 API（C++ 实现，四级检测：完全相同 → 编辑距离 → 拼音距离 → 余弦相似度），替代 JS 端 bigram 相似度计算，精度与性能大幅提升。
