@@ -34,8 +34,8 @@
     {
       "id": "heylyx841.danmaku_limiter",
       "name": "弹幕限制器",
-      "version": "1.1.1",
-      "minHostVersion": "1.10.7",
+      "version": "1.1.2",
+      "minHostVersion": "1.10.8",
       "description": "弹幕密度限制 + 相似弹幕合并（替代原生合并渲染）",
       "author": "Heylyx841",
       "github": "",
