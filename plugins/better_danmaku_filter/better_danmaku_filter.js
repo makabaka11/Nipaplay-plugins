@@ -1,7 +1,7 @@
 const pluginManifest = {
   id: 'better_danmaku_filter',
   name: '智能弹幕精选',
-  version: '1.2.1',
+  version: '1.2.2',
   minHostVersion: '1.10.6',
   description: '智能精选弹幕，过滤低质量弹幕，保留优质内容',
   author: 'Retr0',
@@ -469,11 +469,6 @@ function filterDanmaku(items, p) {
   return finalKept;
 }
 
-function pluginOnInitialize() {
-  loadParams();
-  ui.showSnackBar('弹幕精选插件已启用');
-}
-
 function pluginOnDestroy() {
   ui.showSnackBar('弹幕精选插件已禁用');
 }
@@ -499,7 +494,7 @@ function pluginOnEvent(event) {
 
     var targetKeepCount = getTargetKeepCount(commentsArray.length, params);
     if (targetKeepCount >= commentsArray.length) {
-      ui.showSnackBar('弹幕精选跳过: ' + originalCount + ' 条不超过目标保留数 ' + targetKeepCount);
+      ui.showSnackBar('弹幕精选跳过: ' + originalCount + ' 条不超过期望数数 ');
       return;
     }
 
