@@ -1,7 +1,7 @@
 const pluginManifest = {
   id: 'better_danmaku_filter',
   name: '智能弹幕精选',
-  version: '1.1.1',
+  version: '1.2.0',
   minHostVersion: '1.10.6',
   description: '智能精选弹幕，过滤低质量弹幕，保留优质内容',
   author: 'Retr0',
@@ -19,6 +19,7 @@ var params = {
   filterDuplicate: true,
   filterSpam: true,
   filterShort: true,
+  filterNoise: true,
   allowEmoji: true,
   filterAdvanced: true
 };
@@ -33,6 +34,7 @@ function loadParams() {
   params.filterDuplicate = settings.getText('filterDuplicate') === 'true';
   params.filterSpam = settings.getText('filterSpam') === 'true';
   params.filterShort = settings.getText('filterShort') === 'true';
+  params.filterNoise = settings.getText('filterNoise') === 'true';
   params.allowEmoji = settings.getText('allowEmoji') === 'true';
   params.filterAdvanced = settings.getText('filterAdvanced') === 'true';
 }
@@ -94,6 +96,12 @@ function buildUIEntries() {
       enabled: params.filterShort
     },
     {
+      id: 'filterNoise',
+      title: '过滤无意义短串',
+      description: '过滤无意义的短数字/字母串（如 111、aaa、123），保留常见网络用语',
+      enabled: params.filterNoise
+    },
+    {
       id: 'allowEmoji',
       title: '允许纯Emoji降权',
       description: '纯Emoji弹幕适当降权而非直接过滤',
@@ -126,6 +134,68 @@ function isPureEmoji(s) {
 
 function isPureAlphaNum(s) {
   return /^[a-zA-Z0-9\s]+$/.test(s.trim());
+}
+
+function isPureDigits(s) {
+  return /^[0-9\s]+$/.test(s.trim());
+}
+
+function isPureLetters(s) {
+  return /^[a-zA-Z\s]+$/.test(s.trim());
+}
+
+function hasCJK(s) {
+  return /[一-鿿㐀-䶿]/.test(s);
+}
+
+// 常见有意义的纯英文/数字网络用语，命中后不被当作无意义短串过滤
+var MEANINGFUL_ALPHANUM = {
+  '666': 1, '6666': 1, '66666': 1,
+  '999': 1, '996': 1,
+  '888': 1, '777': 1, '555': 1, '111': 1,
+  '233': 1, '2333': 1, '23333': 1,
+  'hhh': 1, 'hhhh': 1, 'hhhhh': 1, 'haha': 1, 'hahaha': 1,
+  'lol': 1, 'lolol': 1, 'lmao': 1,
+  'gg': 1, 'nb': 1,
+  'qaq': 1, 'qwq': 1, 'qwp': 1, 'tvt': 1,
+  'awsl': 1, 'xswl': 1, 'yyds': 1, 'kksk': 1, 'kkp': 1,
+  'ojbk': 1, 'wdnmd': 1, 'omg': 1,
+  'thx': 1, 'ok': 1
+};
+
+// 优质弹幕常见关键词，命中给予加分，引导精选偏好
+var QUALITY_KEYWORDS = [
+  '前方高能', '高能', '预警', '名场面', '彩蛋', '致敬', '伏笔', '隐喻',
+  '细节', '细思极恐', '神仙', '泪目', '泪崩', '破防', '笑死', '笑不活了',
+  '催更', '完结', '甜', '刀', '爷青回', '百看不厌', '循环', '单曲循环'
+];
+
+function isSingleCharRepeat(s) {
+  if (s.length < 3) return false;
+  var c = s[0];
+  for (var i = 1; i < s.length; i++) {
+    if (s[i] !== c) return false;
+  }
+  return true;
+}
+
+// 判断是否为无意义的短数字/字母串：单字符堆叠、纯短英数等
+function isLowInfoNoise(s) {
+  var t = s.trim();
+  if (!t) return true;
+  // 完全无中文/英数字符（纯标点/符号/空白）
+  if (!/[一-鿿㐀-䶿a-zA-Z0-9]/.test(t)) return true;
+
+  var lower = t.toLowerCase();
+  if (MEANINGFUL_ALPHANUM[lower]) return false;
+
+  // 单个 ASCII 字符堆叠，如 111 / aaa / ....
+  if (isSingleCharRepeat(t) && /[a-zA-Z0-9]/.test(t[0])) return true;
+
+  // 纯英数字且较短（<=4），多为无意义串，如 123 / abc / 1a2 / 4567
+  if (isPureAlphaNum(t) && t.length <= 4) return true;
+
+  return false;
 }
 
 function maxCharRatio(s) {
@@ -174,39 +244,69 @@ function scoreItem(item, p) {
   var text = String(item.content || '').trim();
   var score = 50;
   var reasons = [];
-  
+
   var len = text.length;
   if (len <= 2) score -= 30;
   else if (len <= 5) score += 5;
   else if (len <= 15) score += 15;
   else if (len <= 30) score += 10;
   else score += 5;
-  
+
   var div = charDiversity(text);
   score += Math.round(div * 20);
-  
+
   var repRatio = maxCharRatio(text);
   if (repRatio > p.repeatThreshold / 100) {
     var pen = Math.round((repRatio - p.repeatThreshold / 100) * 60);
     score -= pen;
     reasons.push('重复字');
   }
-  
+
   if (isPureEmoji(text)) {
     if (p.allowEmoji) {
       score -= 10;
-      reasons.push('纯emoji');
     } else {
       score -= 40;
-      reasons.push('纯emoji');
+    }
+    reasons.push('纯emoji');
+  }
+
+  // 含中文的弹幕通常信息量更高，给予加分
+  if (hasCJK(text)) {
+    score += 8;
+  }
+
+  // 全英文/数字弹幕分级处理：网络用语轻微降权，纯数字重罚，其余按设定惩罚
+  if (isPureAlphaNum(text)) {
+    var lower = text.toLowerCase();
+    if (MEANINGFUL_ALPHANUM[lower]) {
+      score -= Math.round(p.penalty * 0.3);
+      reasons.push('网络用语');
+    } else if (isPureDigits(text)) {
+      score -= p.penalty + 15;
+      reasons.push('纯数字');
+    } else {
+      score -= p.penalty;
+      reasons.push('全英数');
     }
   }
-  
-  if (isPureAlphaNum(text)) {
-    score -= p.penalty;
-    reasons.push('全英数');
+
+  // 标点符号占比过高降权
+  var punctRatio = (text.match(/[，。！？、,.!?;:~…]/g) || []).length / Math.max(1, len);
+  if (punctRatio > 0.4) {
+    score -= 10;
+    reasons.push('标点多');
   }
-  
+
+  // 命中优质关键词加分，引导精选偏好
+  for (var k = 0; k < QUALITY_KEYWORDS.length; k++) {
+    if (text.indexOf(QUALITY_KEYWORDS[k]) !== -1) {
+      score += 8;
+      reasons.push('优质词');
+      break;
+    }
+  }
+
   return { score: Math.max(0, Math.min(100, score)), reasons };
 }
 
@@ -220,6 +320,10 @@ function filterDanmaku(items, p) {
     
     if (p.filterShort && text.length < p.minLen) {
       dropReasons.push('太短');
+    }
+
+    if (p.filterNoise && dropReasons.length === 0 && isLowInfoNoise(text)) {
+      dropReasons.push('无意义短串');
     }
     
     result.push({
@@ -405,7 +509,7 @@ function pluginOnEvent(event) {
 }
 
 function pluginHandleUIAction(actionId) {
-  var switchActions = ['filterDuplicate', 'filterSpam', 'filterShort', 'allowEmoji', 'filterAdvanced'];
+  var switchActions = ['filterDuplicate', 'filterSpam', 'filterShort', 'filterNoise', 'allowEmoji', 'filterAdvanced'];
   
   if (switchActions.includes(actionId)) {
     params[actionId] = !params[actionId];
